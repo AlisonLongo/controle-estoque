@@ -1,0 +1,16 @@
+/* Faz o dropdown acompanhar a navbar escura */
+.navbar-dark .dropdown-menu {
+  background-color: #212529; /* mesma cor do bg-dark */
+  border: none; /* remove a borda clara */
+}
+
+/* Links dentro do dropdown */
+.navbar-dark .dropdown-menu .dropdown-item {
+  color: #fff; /* texto branco */
+}
+
+.navbar-dark .dropdown-menu .dropdown-item:hover,
+.navbar-dark .dropdown-menu .dropdown-item:focus {
+  background-color: #343a40; /* um tom mais claro no hover */
+  color: #fff;
+}
