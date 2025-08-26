@@ -63,14 +63,15 @@ try {
 ?>
 
 <!DOCTYPE html>
-<html lang="pt-BR">
+<html lang="pt-br">
 <head>
-    <meta charset="UTF-8">
-    <title>Cadastro de Categorias</title>
-    <link href="assets/css/bootstrap.min.css" rel="stylesheet">
+<meta charset="UTF-8">
+<title>Categorias</title>
+<link rel="stylesheet" href="assets/css/bootstrap.min.css">
 </head>
-<body class="p-4">
-    <div class="container">
+<body>
+<?php include 'navbar.php'; ?>
+<div class="container mt-4">
         <h1>Cadastro de Categorias</h1>
 
         <?php if ($mensagem): ?>
