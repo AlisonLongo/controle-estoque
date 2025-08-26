@@ -1,0 +1,89 @@
+-- =========================
+-- Criação de tabelas
+-- =========================
+
+-- Tabela de fornecedores
+CREATE TABLE fornecedores (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(150) NOT NULL,
+    cnpj VARCHAR(20),
+    telefone VARCHAR(20),
+    email VARCHAR(100),
+    status VARCHAR(10) DEFAULT 'ATIVO',
+    created_at TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela de categorias
+CREATE TABLE categorias (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(100) NOT NULL
+);
+
+-- Inserir categorias iniciais
+INSERT INTO categorias (nome) VALUES
+('Eletrônicos'),
+('Móveis'),
+('Ferramentas'),
+('Higiene'),
+('Itens');
+
+-- Tabela de itens
+CREATE TABLE itens (
+    id SERIAL PRIMARY KEY,
+    nome VARCHAR(255) NOT NULL,
+    descricao TEXT,
+    valor_unitario NUMERIC(12,2),
+    quantidade_atual INT DEFAULT 0,
+    status VARCHAR(10) DEFAULT 'ATIVO',
+    id_categoria INT REFERENCES categorias(id)
+);
+
+-- Tabela de ordens de compra
+CREATE TABLE ordens_compra (
+    id SERIAL PRIMARY KEY,
+    fornecedor VARCHAR(255),
+    data_ordem TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    status VARCHAR(20) DEFAULT 'pendente',
+    id_fornecedor INT REFERENCES fornecedores(id)
+);
+
+-- Tabela de itens de ordem de compra
+CREATE TABLE ordem_itens (
+    id SERIAL PRIMARY KEY,
+    id_ordem INT REFERENCES ordens_compra(id),
+    id_item INT REFERENCES itens(id),
+    quantidade INT,
+    valor_unitario NUMERIC(12,2)
+);
+
+-- Tabela de movimentações de itens
+CREATE TABLE movimentacoes (
+    id SERIAL PRIMARY KEY,
+    id_item INT REFERENCES itens(id),
+    tipo_movimentacao VARCHAR(10) CHECK (tipo_movimentacao IN ('entrada','saida')),
+    quantidade INT NOT NULL,
+    valor_total NUMERIC(12,2),
+    data_movimentacao TIMESTAMP DEFAULT CURRENT_TIMESTAMP,
+    observacao TEXT,
+    id_ordem INT REFERENCES ordens_compra(id)
+);
+
+-- Tabela de inventários
+CREATE TABLE inventarios (
+    id SERIAL PRIMARY KEY,
+    data_realizado DATE NOT NULL,
+    status VARCHAR(30) DEFAULT 'CONTAGEM',
+    criado_em TIMESTAMP DEFAULT CURRENT_TIMESTAMP
+);
+
+-- Tabela de itens do inventário
+CREATE TABLE inventario_itens (
+    id SERIAL PRIMARY KEY,
+    id_inventario INT NOT NULL REFERENCES inventarios(id) ON DELETE CASCADE,
+    id_item INT NOT NULL REFERENCES itens(id) ON DELETE CASCADE,
+    estoque_sistema NUMERIC(12,2) NOT NULL,
+    valor_medio_sistema NUMERIC(12,2) NOT NULL,
+    contagem_atual NUMERIC(12,2),
+    valor_medio_atual NUMERIC(12,2),
+    status VARCHAR(30) DEFAULT 'CONTAGEM'
+);
