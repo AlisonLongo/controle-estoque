@@ -12,35 +12,45 @@ if(isset($_POST['iniciar'])){
     if(empty($data) || $data > date('Y-m-d')){
         $msg = "❌ A data não pode ser superior à data de hoje.";
     } else {
-        $stmt = $pdo->prepare("INSERT INTO inventarios (data_realizado, status) VALUES (?, 'CONTAGEM') RETURNING id");
-        $stmt->execute([$data]);
-        $inventario_id = $stmt->fetchColumn();
 
-        $itens = $pdo->query("
-    SELECT i.id AS id_item, i.nome,
-           COALESCE(SUM(m.quantidade),0) AS estoque_sistema,
-           COALESCE(AVG(m.valor_total),0) AS valor_medio_sistema
-    FROM itens i
-    LEFT JOIN movimentacoes m ON m.id_item = i.id
-    WHERE i.status='ATIVO'        -- <- FILTRO ADICIONADO
-    GROUP BY i.id, i.nome
-")->fetchAll(PDO::FETCH_ASSOC);
+     
+        $stmtCheck = $pdo->query("SELECT COUNT(*) FROM inventarios WHERE status NOT IN ('APROVADO','REPROVADO')");
+        $inventarioEmAberto = $stmtCheck->fetchColumn();
 
-        $stmtInsert = $pdo->prepare("
-            INSERT INTO inventario_itens (id_inventario, id_item, estoque_sistema, valor_medio_sistema, status)
-            VALUES (?, ?, ?, ?, 'CONTAGEM')
-        ");
-        foreach($itens as $item){
-            $stmtInsert->execute([
-                $inventario_id,
-                $item['id_item'],
-                $item['estoque_sistema'],
-                $item['valor_medio_sistema']
-            ]);
+        if($inventarioEmAberto > 0){
+            $msg = "⚠️ Já existe um inventário em andamento. Finalize ou aprove antes de iniciar um novo.";
+        } else {
+
+            $stmt = $pdo->prepare("INSERT INTO inventarios (data_realizado, status) VALUES (?, 'CONTAGEM') RETURNING id");
+            $stmt->execute([$data]);
+            $inventario_id = $stmt->fetchColumn();
+
+            $itens = $pdo->query("
+                SELECT i.id AS id_item, i.nome,
+                       COALESCE(SUM(m.quantidade),0) AS estoque_sistema,
+                       COALESCE(AVG(m.valor_total),0) AS valor_medio_sistema
+                FROM itens i
+                LEFT JOIN movimentacoes m ON m.id_item = i.id
+                WHERE i.status='ATIVO'
+                GROUP BY i.id, i.nome
+            ")->fetchAll(PDO::FETCH_ASSOC);
+
+            $stmtInsert = $pdo->prepare("
+                INSERT INTO inventario_itens (id_inventario, id_item, estoque_sistema, valor_medio_sistema, status)
+                VALUES (?, ?, ?, ?, 'CONTAGEM')
+            ");
+            foreach($itens as $item){
+                $stmtInsert->execute([
+                    $inventario_id,
+                    $item['id_item'],
+                    $item['estoque_sistema'],
+                    $item['valor_medio_sistema']
+                ]);
+            }
+
+            header("Location: inventario_contagem.php?id=".$inventario_id);
+            exit;
         }
-
-        header("Location: inventario_contagem.php?id=".$inventario_id);
-        exit;
     }
 }
 
@@ -85,21 +95,36 @@ $inventariosConferencia = $stmtConf->fetchAll(PDO::FETCH_ASSOC);
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Iniciar Inventário</title>
+<title>Inventário</title>
 <link rel="stylesheet" href="assets/css/bootstrap.min.css">
 </head>
 <body>
-<?php include 'navbar.php'; ?>
+
+<?php
+include 'navbar.php';
+
+$msg = $_GET['msg'] ?? '';
+if($msg){
+    echo "
+    <div class='alert alert-info alert-dismissible fade show mt-3' role='alert'>
+        $msg
+        <button type='button' class='btn-close' data-bs-dismiss='alert' aria-label='Fechar'></button>
+    </div>
+    ";
+}
+?>
+
+
+
 
 <div class="container mt-4">
     <h2>Iniciar Inventário</h2>
 
-    <?php if($msg) echo "<div class='alert alert-info'>$msg</div>"; ?>
 
     <form method="post" class="card p-3 shadow-sm mb-4">
         <div class="mb-3">
             <label for="data" class="form-label">Data do Inventário</label>
-            <input type="date" name="data" id="data" class="form-control" max="<?=date('Y-m-d', strtotime('-1 day'))?>" required>
+            <input type="date" name="data" id="data" class="form-control" max="<?=date('Y-m-d')?>" required>
         </div>
         <button type="submit" name="iniciar" class="btn btn-primary">Iniciar Inventário</button>
     </form>
@@ -112,7 +137,9 @@ $inventariosConferencia = $stmtConf->fetchAll(PDO::FETCH_ASSOC);
             <option value="">Todos os status</option>
             <option value="CONTAGEM" <?= (isset($_GET['f_status']) && $_GET['f_status']=='CONTAGEM')?'selected':'' ?>>CONTAGEM</option>
             <option value="CONFERENCIA" <?= (isset($_GET['f_status']) && $_GET['f_status']=='CONFERENCIA')?'selected':'' ?>>CONFERÊNCIA</option>
+             <option value="AGUARDANDO APROVAÇÃO" <?= (isset($_GET['f_status']) && $_GET['f_status']=='AGUARDANDO APROVAÇÃO')?'selected':'' ?>>AGUARDANDO APROVAÇÃO</option>
             <option value="APROVADO" <?= (isset($_GET['f_status']) && $_GET['f_status']=='APROVADO')?'selected':'' ?>>APROVADO</option>
+            <option value="REPROVADO" <?= (isset($_GET['f_status']) && $_GET['f_status']=='REPROVADO')?'selected':'' ?>>REPROVADO</option>
         </select>
     </div>
 
@@ -149,19 +176,32 @@ $inventariosConferencia = $stmtConf->fetchAll(PDO::FETCH_ASSOC);
                         <td><?=$inv['id']?></td>
                         <td><?=date('d/m/Y', strtotime($inv['data_realizado']))?></td>
                         <td><?=$inv['status']?></td>
-                        <td>
-    <a href="inventario_contagem.php?id=<?=$inv['id']?>" class="btn btn-primary btn-sm">
-        Visualizar
-        <?= $inv['status'] != 'APROVADO' ? '/ Editar' : '' ?>
-    </a>
+                        
+<td>
+    <?php if($inv['status'] == 'APROVADO'): ?>
+        <a href="inventario_visualizar.php?id=<?=$inv['id']?>" class="btn btn-primary btn-sm">
+            Visualizar
+        </a>
+    <?php elseif($inv['status'] == 'REPROVADO'): ?>
 
-    <?php if($inv['status'] != 'APROVADO'): ?>
+    <?php elseif($inv['status'] == 'AGUARDANDO APROVAÇÃO'): ?>
+        <a href="inventario_aprovacao_rel.php?id=<?=$inv['id']?>" class="btn btn-warning btn-sm">
+    Ir para Aprovação
+</a>
+
+    <?php else: ?>
+        <a href="inventario_contagem.php?id=<?=$inv['id']?>" class="btn btn-primary btn-sm">
+            Visualizar / Editar
+        </a>
+
         <form method="post" style="display:inline-block;" onsubmit="return confirm('Deseja realmente excluir este inventário?');">
             <input type="hidden" name="inventario_id" value="<?=$inv['id']?>">
             <button type="submit" name="excluir" class="btn btn-danger btn-sm">Excluir</button>
         </form>
     <?php endif; ?>
 </td>
+
+
 
                     </tr>
                 <?php endforeach; ?>

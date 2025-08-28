@@ -1,5 +1,7 @@
 <?php 
 include 'conexao.php'; 
+session_start();
+
 $msg = "";
 $editar_id = "";
 $editar_nome = "";
@@ -11,55 +13,63 @@ $editar_status = "ATIVO";
 
 $categorias = $pdo->query("SELECT id, nome FROM categorias ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 
-if ($_SERVER['REQUEST_METHOD'] == 'POST') {
-    if(isset($_POST['salvar'])) {
-        $nome = trim($_POST['nome']);
-        $descricao = $_POST['descricao'];
-        $valor_unitario = $_POST['valor_unitario'];
-        $quantidade_atual = $_POST['quantidade_atual'];
-        $id_categoria = $_POST['id_categoria'];
-        $status = $_POST['status'];
+if(isset($_SESSION['msg_item'])){
+    $msg = $_SESSION['msg_item'];
+    unset($_SESSION['msg_item']);
+}
 
-        $sqlCheck = "SELECT COUNT(*) FROM itens WHERE nome = ?";
-        $paramsCheck = [$nome];
+if(isset($_POST['salvar'])) {
+    $nome = strtoupper(trim($_POST['nome'])); 
+    $descricao = $_POST['descricao'];
+    $id_categoria = $_POST['id_categoria'];
+    $status = $_POST['status'];
 
+    $valor_unitario = $_POST['valor_unitario'];
+    $quantidade_atual = $_POST['quantidade_atual'];
+
+    $sqlCheck = "SELECT COUNT(*) FROM itens WHERE nome = ?";
+    $paramsCheck = [$nome];
+
+    if(!empty($_POST['id'])) {
+        $sqlCheck .= " AND id <> ?";
+        $paramsCheck[] = $_POST['id'];
+    }
+
+    $stmtCheck = $pdo->prepare($sqlCheck);
+    $stmtCheck->execute($paramsCheck);
+    $existe = $stmtCheck->fetchColumn();
+
+    if($existe > 0){
+        $_SESSION['msg_item'] = "Já existe um item cadastrado com este nome.";
+        header("Location: itens.php");
+        exit;
+    } else {
         if(!empty($_POST['id'])) {
-            $sqlCheck .= " AND id <> ?";
-            $paramsCheck[] = $_POST['id'];
-        }
 
-        $stmtCheck = $pdo->prepare($sqlCheck);
-        $stmtCheck->execute($paramsCheck);
-        $existe = $stmtCheck->fetchColumn();
-
-        if($existe > 0){
-            $msg = "Já existe um item cadastrado com este nome.";
-        } else {
-            if(!empty($_POST['id'])) {
-                $id = $_POST['id'];
-                $stmt = $pdo->prepare("UPDATE itens 
-                    SET nome=?, descricao=?, valor_unitario=?, quantidade_atual=?, id_categoria=?, status=? 
-                    WHERE id=?");
-                if($stmt->execute([$nome,$descricao,$valor_unitario,$quantidade_atual,$id_categoria,$status,$id])){
-                    $msg = "Item atualizado com sucesso!";
-                    $editar_id = $editar_nome = $editar_descricao = $editar_valor = $editar_qtd = $editar_id_categoria = "";
-                    $editar_status = "ATIVO";
-                } else {
-                    $msg = "Erro ao atualizar item.";
-                }
+            $id = $_POST['id'];
+            $stmt = $pdo->prepare("UPDATE itens 
+                SET nome=?, descricao=?, valor_unitario=?, quantidade_atual=?, id_categoria=?, status=? 
+                WHERE id=?");
+            if($stmt->execute([$nome,$descricao,$valor_unitario,$quantidade_atual,$id_categoria,$status,$id])){
+                $_SESSION['msg_item'] = "Item atualizado com sucesso!";
+                header("Location: itens.php");
+                exit;
             } else {
-                $stmt = $pdo->prepare("INSERT INTO itens 
-                    (nome, descricao, valor_unitario, quantidade_atual, id_categoria, status) 
-                    VALUES (?, ?, ?, ?, ?, ?)");
-                if($stmt->execute([$nome,$descricao,$valor_unitario,$quantidade_atual,$id_categoria,$status])){
-                    $msg = "Item cadastrado com sucesso!";
-                } else {
-                    $msg = "Erro ao cadastrar item.";
-                }
+                $msg = "Erro ao atualizar item.";
+            }
+        } else {
+
+            $stmt = $pdo->prepare("INSERT INTO itens 
+                (nome, descricao, valor_unitario, quantidade_atual, id_categoria, status) 
+                VALUES (?, ?, ?, ?, ?, ?)");
+            if($stmt->execute([$nome,$descricao,$valor_unitario,$quantidade_atual,$id_categoria,$status])){
+                $_SESSION['msg_item'] = "Item cadastrado com sucesso!";
+                header("Location: itens.php");
+                exit;
+            } else {
+                $msg = "Erro ao cadastrar item.";
             }
         }
-        $_SESSION['msg_item'] = $msg;
-        $msg = $_SESSION['msg_item'];
     }
 }
 
@@ -87,20 +97,22 @@ if(isset($_GET['excluir'])){
     $temMov = $stmtCheck->fetch(PDO::FETCH_ASSOC)['total'];
 
     if($temMov > 0){
-
         $pdo->prepare("UPDATE itens SET status='INATIVO' WHERE id=?")->execute([$id]);
-        $msg = "O item já possui movimentações e foi inativado.";
+        $_SESSION['msg_item'] = "O item já possui movimentações e foi inativado.";
     } else {
-
         $pdo->prepare("DELETE FROM itens WHERE id=?")->execute([$id]);
-        $msg = "Item excluído com sucesso!";
+        $_SESSION['msg_item'] = "Item excluído com sucesso!";
     }
+    header("Location: itens.php");
+    exit;
 }
 
 if(isset($_GET['ativar'])){
     $id = $_GET['ativar'];
     $pdo->prepare("UPDATE itens SET status='ATIVO' WHERE id=?")->execute([$id]);
-    $msg = "Item ativado!";
+    $_SESSION['msg_item'] = "Item ativado!";
+    header("Location: itens.php");
+    exit;
 }
 
 $itens = [];
@@ -117,7 +129,7 @@ if(isset($_POST['consultar'])){
     $itens = $stmt->fetchAll(PDO::FETCH_ASSOC);
 }
 ?>
-<?php include 'navbar.php'; ?>
+
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
@@ -125,6 +137,7 @@ if(isset($_POST['consultar'])){
 <title>Itens</title>
 <link rel="stylesheet" href="assets/css/bootstrap.min.css">
 </head>
+<?php include 'navbar.php'; ?>
 <body>
 <div class="container mt-4">
     <h2>Cadastro de Itens</h2>
@@ -142,11 +155,11 @@ if(isset($_POST['consultar'])){
         </div>
         <div class="mb-3">
             <label>Valor Unitário</label>
-            <input type="number" step="0.01" name="valor_unitario" class="form-control" value="<?= $editar_valor ?>">
+            <input type="number" step="0.01" name="valor_unitario" class="form-control" value="<?= $editar_valor ?>" readonly>
         </div>
         <div class="mb-3">
             <label>Quantidade Atual</label>
-            <input type="number" name="quantidade_atual" class="form-control" value="<?= $editar_qtd ?: 0 ?>">
+            <input type="number" name="quantidade_atual" class="form-control" value="<?= $editar_qtd ?: 0 ?>" readonly>
         </div>
         <div class="mb-3">
             <label>Categoria</label>

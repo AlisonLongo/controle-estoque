@@ -1,5 +1,8 @@
 <?php 
 include 'conexao.php'; 
+
+// Buscar todos os itens ativos
+$itens = $pdo->query("SELECT id, nome FROM itens WHERE status='ATIVO' ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 ?>
 <!DOCTYPE html>
 <html lang="pt-br">
@@ -7,7 +10,6 @@ include 'conexao.php';
 <meta charset="UTF-8">
 <title>Estoque</title>
 <link rel="stylesheet" href="assets/css/bootstrap.min.css">
-<script src="assets/js/chart.min.js"></script>
 </head>
 <body>
 <?php include 'navbar.php'; ?>
@@ -17,8 +19,14 @@ include 'conexao.php';
     <form method="GET" class="row g-3 mb-3 align-items-end">
         <div class="col-md-4">
             <label for="f_item" class="form-label"><strong>Item</strong></label>
-            <input type="text" name="f_item" id="f_item" class="form-control"
-                   value="<?= htmlspecialchars($_GET['f_item'] ?? '') ?>" placeholder="Digite parte do nome do item">
+            <select name="f_item" id="f_item" class="form-select">
+                <option value="">Todos os itens</option>
+                <?php foreach($itens as $i): ?>
+                    <option value="<?= $i['id'] ?>" <?= (isset($_GET['f_item']) && $_GET['f_item']==$i['id'])?'selected':'' ?>>
+                        <?= $i['nome'] ?>
+                    </option>
+                <?php endforeach; ?>
+            </select>
         </div>
 
         <div class="col-md-3">
@@ -37,60 +45,43 @@ include 'conexao.php';
     </form>
 
 <?php
-
 $where = [];
 $params = [];
 
 if(!empty($_GET['f_item'])){
-    $where[] = "i.nome ILIKE ?";
-    $params[] = "%" . $_GET['f_item'] . "%";
+    $where[] = "id = ?";
+    $params[] = $_GET['f_item'];
 }
 
 if(!empty($_GET['f_status'])){
-    $where[] = "i.status = ?";
+    $where[] = "status = ?";
     $params[] = $_GET['f_status'];
 }
 
-$sql = "
-    SELECT i.nome,
-           i.status,
-           SUM(CASE WHEN m.tipo_movimentacao='entrada' THEN m.quantidade ELSE 0 END) AS total_entrada,
-           SUM(CASE WHEN m.tipo_movimentacao='saida' THEN m.quantidade ELSE 0 END) AS total_saida,
-           SUM(CASE WHEN m.tipo_movimentacao='entrada' THEN m.valor_total ELSE 0 END) AS gasto_total,
-           SUM(CASE WHEN m.tipo_movimentacao='entrada' THEN m.quantidade ELSE 0 END)
-           - SUM(CASE WHEN m.tipo_movimentacao='saida' THEN m.quantidade ELSE 0 END) AS qtd_estoque
-    FROM itens i
-    LEFT JOIN movimentacoes m ON i.id = m.id_item
-";
+$sql = "SELECT id, nome, status, quantidade_atual, valor_unitario FROM itens";
 
 if($where){
     $sql .= " WHERE ".implode(" AND ", $where);
 }
 
-$sql .= " GROUP BY i.nome, i.status ORDER BY i.nome";
+$sql .= " ORDER BY nome";
 
 $stmt = $pdo->prepare($sql);
 $stmt->execute($params);
 $relatorios = $stmt->fetchAll(PDO::FETCH_ASSOC);
 
-$labels = [];
-$entradas = [];
-$saidas = [];
 $total_qtd_estoque = 0;
 $total_valor_estoque = 0;
 
 foreach($relatorios as $r){
-    $labels[] = $r['nome'];
-    $entradas[] = (int)$r['total_entrada'];
-    $saidas[] = (int)$r['total_saida'];
-    $total_qtd_estoque += $r['qtd_estoque'];
-    $total_valor_estoque += $r['gasto_total'];
+    $total_qtd_estoque += $r['quantidade_atual'];
+    $total_valor_estoque += $r['quantidade_atual'] * $r['valor_unitario'];
 }
 ?>
 
 <h3>Resumo Geral</h3>
 <div class="row mb-3">
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-white bg-primary mb-3">
             <div class="card-body">
                 <h5 class="card-title">Quantidade Total em Estoque</h5>
@@ -98,7 +89,7 @@ foreach($relatorios as $r){
             </div>
         </div>
     </div>
-    <div class="col-md-4">
+    <div class="col-md-6">
         <div class="card text-white bg-success mb-3">
             <div class="card-body">
                 <h5 class="card-title">Valor Total em Estoque (R$)</h5>
@@ -114,9 +105,8 @@ foreach($relatorios as $r){
         <tr>
             <th>Item</th>
             <th>Status</th>
-            <th>Total Entradas</th>
-            <th>Total Saídas</th>
             <th>Quantidade em Estoque</th>
+            <th>Valor Médio Unitário (R$)</th>
             <th>Valor Total (R$)</th>
         </tr>
     </thead>
@@ -131,41 +121,14 @@ foreach($relatorios as $r){
                     <span class="badge bg-secondary">Inativo</span>
                 <?php endif; ?>
             </td>
-            <td><?= $r['total_entrada'] ?></td>
-            <td><?= $r['total_saida'] ?></td>
-            <td><?= $r['qtd_estoque'] ?></td>
-            <td><?= number_format($r['gasto_total'],2,',','.') ?></td>
+            <td><?= $r['quantidade_atual'] ?></td>
+            <td><?= number_format($r['valor_unitario'],2,',','.') ?></td>
+            <td><?= number_format($r['quantidade_atual'] * $r['valor_unitario'],2,',','.') ?></td>
         </tr>
         <?php endforeach; ?>
     </tbody>
 </table>
-</div>
 
 <script src="assets/js/bootstrap.bundle.min.js"></script>
-<script>
-const ctx = document.getElementById('graficoItens').getContext('2d');
-const graficoItens = new Chart(ctx, {
-    type: 'bar',
-    data: {
-        labels: <?= json_encode($labels) ?>,
-        datasets: [
-            {
-                label: 'Entradas',
-                data: <?= json_encode($entradas) ?>,
-                backgroundColor: '#0d6efd'
-            },
-            {
-                label: 'Saídas',
-                data: <?= json_encode($saidas) ?>,
-                backgroundColor: '#dc3545'
-            }
-        ]
-    },
-    options: {
-        responsive: true,
-        scales: { y: { beginAtZero: true } }
-    }
-});
-</script>
 </body>
 </html>

@@ -4,6 +4,7 @@ ini_set('display_errors', 1);
 error_reporting(E_ALL);
 
 $inventario_id = $_GET['id'] ?? 0;
+$msg = $_GET['msg'] ?? "";
 
 $stmt = $pdo->prepare("SELECT * FROM inventarios WHERE id=?");
 $stmt->execute([$inventario_id]);
@@ -31,17 +32,18 @@ $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
 <html lang="pt-br">
 <head>
 <meta charset="UTF-8">
-<title>Visualizar Inventário</title>
+<title>Aprovação de Inventário</title>
 <link rel="stylesheet" href="assets/css/bootstrap.min.css">
 </head>
 <body>
 <?php include 'navbar.php'; ?>
-
 <div class="container mt-4">
-    <h2>Visualizar Inventário #<?=$inventario_id?></h2>
-    <h4>Status: <span class="badge <?= $inventario['status'] == 'APROVADO' ? 'bg-success' : ($inventario['status'] == 'REPROVADO' ? 'bg-danger' : 'bg-secondary') ?>">
-        <?=$inventario['status']?>
-    </span></h4>
+
+    <h2>Inventário <?=$inventario_id?> - Aprovação</h2>
+
+    <?php if($msg) echo "<div class='alert alert-info'>$msg</div>"; ?>
+
+    <h4>Status: <span class="badge bg-secondary"><?=$inventario['status']?></span></h4>
 
     <table class="table table-bordered table-striped mt-3">
         <thead>
@@ -66,9 +68,19 @@ $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
         </tbody>
     </table>
 
-    <a href="inventario.php" class="btn btn-secondary mt-3">⬅ Voltar</a>
-</div>
+    <form method="post" action="inventario_aprovacao_action.php">
+        <input type="hidden" name="inventario_id" value="<?=$inventario_id?>">
 
+        <?php if($inventario['status'] == 'AGUARDANDO APROVAÇÃO'): ?>
+            <button type="submit" name="aprovar" class="btn btn-success">✅ Aprovar Inventário</button>
+            <button type="submit" name="reprovar" class="btn btn-danger">❌ Reprovar Inventário</button>
+        <?php else: ?>
+            <div class="alert alert-info mt-3">Este inventário já foi <?=$inventario['status']?>.</div>
+            <a href="inventario.php" class="btn btn-secondary mt-2">⬅ Voltar</a>
+        <?php endif; ?>
+    </form>
+
+</div>
 <script src="assets/js/bootstrap.bundle.min.js"></script>
 </body>
 </html>

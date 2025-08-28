@@ -6,18 +6,27 @@ $categoriasFiltro = $pdo->query("SELECT id, nome FROM categorias")->fetchAll(PDO
 <!DOCTYPE html>
 <html lang="pt-br">
 <head>
+    
     <meta charset="UTF-8">
     <title>Dashboard Estoque</title>
     <link rel="stylesheet" href="assets/css/bootstrap.min.css">
     <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
     <script src="https://code.jquery.com/jquery-3.6.0.min.js"></script>
+    <style>
+canvas {
+    max-height: 350px; /* altura maior */
+    height: 350px;
+}
+</style>
+
 </head>
 <body>
 <?php include 'navbar.php'; ?>
 
 <div class="container mt-4">
-    <h2>Dashboard Interativa</h2>
+    <h2>Dashboard Interativo</h2>
 
+    <!-- FILTROS -->
     <form id="formFiltros" class="row g-3 mb-4">
         <div class="col-md-3">
             <label>Data Início</label>
@@ -41,33 +50,41 @@ $categoriasFiltro = $pdo->query("SELECT id, nome FROM categorias")->fetchAll(PDO
         </div>
     </form>
 
-    <div class="row text-center mb-4" id="cardsResumo">
+    <!-- CARDS RESUMO -->
+    <div class="row text-center mb-4" id="cardsResumo"></div>
 
-    </div>
-
-    <div class="row" id="graficos">
-        <div class="col-md-6 mb-4">
-            <h5>Entradas x Saídas (Total)</h5>
-            <canvas id="graficoTotal" height="150"></canvas>
+    <!-- GRÁFICOS ORGANIZADOS -->
+    <div class="row">
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Entradas x Saídas</h5>
+            <canvas id="graficoTotal"></canvas>
         </div>
-        <div class="col-md-6 mb-4">
-            <h5>Movimentações Mensais</h5>
-            <canvas id="graficoMensal" height="150"></canvas>
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Movimentações Mensais</h5>
+            <canvas id="graficoMensal"></canvas>
         </div>
-        <div class="col-md-6 mb-4">
-            <h5>Entradas x Saídas por Categoria</h5>
-            <canvas id="graficoCategoria" height="150"></canvas>
-        </div>
-        <div class="col-md-6 mb-4">
-            <h5>Top 5 Itens por Valor</h5>
-            <canvas id="graficoTopItens" height="150"></canvas>
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Entradas x Saídas por Categoria</h5>
+            <canvas id="graficoCategoria"></canvas>
         </div>
 
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Top 5 Itens por Valor</h5>
+            <canvas id="graficoTopItens"></canvas>
+        </div>
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Valor Total Mensal</h5>
+            <canvas id="graficoValorMes"></canvas>
+        </div>
+        <div class="col-md-4 mb-4">
+            <h5 class="text-center">Radar Entradas x Saídas por Categoria</h5>
+            <canvas id="graficoRadarCategoria"></canvas>
+        </div>
     </div>
 </div>
 
 <script>
-let chartTotal, chartMensal, chartCategoria, chartTopItens, chartValorCat;
+let chartTotal, chartMensal, chartCategoria, chartTopItens, chartValorMes, chartRadarCategoria;
 
 function carregarDashboard(filtros = {}) {
     $.ajax({
@@ -76,7 +93,8 @@ function carregarDashboard(filtros = {}) {
         data: filtros,
         dataType: 'json',
         success: function(data) {
-   
+
+            // === CARDS RESUMO ===
             let cardsHtml = `
                 <div class="col-md-3 mb-3">
                     <div class="card bg-info text-white p-2">Itens Cadastrados<h4>${data.totalItens}</h4></div>
@@ -93,60 +111,111 @@ function carregarDashboard(filtros = {}) {
             `;
             $('#cardsResumo').html(cardsHtml);
 
- 
+            // === FUNÇÃO PARA CRIAR GRÁFICOS ===
             function criarGrafico(ctx, tipo, labels, datasets, options = {}) {
                 if(ctx.chart) ctx.chart.destroy();
                 ctx.chart = new Chart(ctx, {type: tipo, data: {labels, datasets}, options});
             }
 
-            criarGrafico(document.getElementById('graficoTotal').getContext('2d'), 'bar',
-                ['Entradas','Saídas'], [{label:'Quantidade de Itens', data:[data.entradas,data.saidas], backgroundColor:['#0d6efd','#dc3545']}],
-                {responsive:true, plugins:{legend:{display:false}}, scales:{y:{beginAtZero:true}}}
+            // === 1. Entradas x Saídas (Doughnut) ===
+            criarGrafico(document.getElementById('graficoTotal').getContext('2d'), 'doughnut', 
+                ['Entradas','Saídas'], 
+                [{
+                    label:'Quantidade de Itens', 
+                    data:[data.entradas, data.saidas], 
+                    backgroundColor:['#0d6efd','#dc3545'],
+                    hoverOffset: 10
+                }],
+                {
+                    responsive:true,
+                    maintainAspectRatio: true,
+                    plugins:{ legend:{ position:'bottom' } }
+                }
             );
 
- 
-criarGrafico(document.getElementById('graficoMensal').getContext('2d'), 'bar',
-    data.meses, [
-        {label:'Entradas', data:data.entradasMes, backgroundColor:'#0d6efd'},
-        {label:'Saídas', data:data.saidasMes, backgroundColor:'#dc3545'}
-    ],
-    {
-        responsive:true,
-        plugins: {
-            legend: { position: 'top' },
-            tooltip: { mode: 'index', intersect: false }
-        },
-        scales: {
-            x: { stacked: false },
-            y: { beginAtZero:true }
-        }
-    }
-);
+            // === 2. Movimentações Mensais (Bar Empilhado) ===
+            criarGrafico(document.getElementById('graficoMensal').getContext('2d'), 'bar',
+                data.meses, [
+                    {label:'Entradas', data:data.entradasMes, backgroundColor:'#0d6efd'},
+                    {label:'Saídas', data:data.saidasMes, backgroundColor:'#dc3545'}
+                ],
+                {
+                    indexAxis: 'x',
+                    responsive:true,
+                    maintainAspectRatio: true,
+                    plugins:{ legend:{ position:'top' } },
+                    scales:{ x:{ stacked:true }, y:{ stacked:true, beginAtZero:true } }
+                }
+            );
 
+            // === 3. Entradas x Saídas por Categoria (Bar Horizontal) ===
             criarGrafico(document.getElementById('graficoCategoria').getContext('2d'), 'bar',
                 data.catNome, [
                     {label:'Entradas', data:data.catEntradas, backgroundColor:'#0d6efd'},
                     {label:'Saídas', data:data.catSaidas, backgroundColor:'#dc3545'}
                 ],
-                {responsive:true, scales:{y:{beginAtZero:true}}}
+                {
+                    indexAxis: 'y',
+                    responsive:true,
+                    maintainAspectRatio: true,
+                    scales:{ x:{ beginAtZero:true } },
+                    plugins:{ legend:{ position:'top' } }
+                }
             );
 
+            // === 4. Top 5 Itens por Valor (Bar Horizontal) ===
             criarGrafico(document.getElementById('graficoTopItens').getContext('2d'), 'bar',
                 data.topNomes, [{label:'Valor em Estoque (R$)', data:data.topValores, backgroundColor:'#198754'}],
-                {responsive:true, scales:{y:{beginAtZero:true}}}
+                {
+                    indexAxis: 'y',
+                    responsive:true,
+                    maintainAspectRatio: true,
+                    scales:{ x:{ beginAtZero:true } },
+                    plugins:{ legend:{ display:false } }
+                }
             );
+
+            // === 5. Valor Total Mensal (Linha) ===
+            criarGrafico(document.getElementById('graficoValorMes').getContext('2d'), 'line',
+                data.meses, [
+                    {label:'Entradas', data:data.entradasMes, borderColor:'#0d6efd', backgroundColor:'rgba(13,110,253,0.2)', fill:true},
+                    {label:'Saídas', data:data.saidasMes, borderColor:'#dc3545', backgroundColor:'rgba(220,53,69,0.2)', fill:true}
+                ],
+                {
+                    responsive:true,
+                    maintainAspectRatio: true,
+                    plugins:{ legend:{ position:'top' } },
+                    scales:{ y:{ beginAtZero:true } }
+                }
+            );
+
+            // === 6. Entradas x Saídas por Categoria (Barras Verticais) ===
+criarGrafico(document.getElementById('graficoRadarCategoria').getContext('2d'), 'bar',
+    data.catNome, [
+        {label:'Entradas', data:data.catEntradas, backgroundColor:'#0d6efd'},
+        {label:'Saídas', data:data.catSaidas, backgroundColor:'#dc3545'}
+    ],
+    {
+        indexAxis: 'x', // barras em pé
+        responsive:true,
+        maintainAspectRatio: true,
+        scales:{ y:{ beginAtZero:true } },
+        plugins:{ legend:{ position:'top' } }
+    }
+);
+
 
         }
     });
 }
 
+// Carrega dashboard ao abrir
 carregarDashboard();
 
+// Aplica filtros
 $('#formFiltros').submit(function(e){
     e.preventDefault();
     let filtros = $(this).serialize();
     carregarDashboard(filtros);
 });
 </script>
-</body>
-</html>

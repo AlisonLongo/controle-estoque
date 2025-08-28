@@ -5,6 +5,7 @@ error_reporting(E_ALL);
 
 $inventario_id = $_GET['id'] ?? 0;
 
+
 $stmt = $pdo->prepare("SELECT * FROM inventarios WHERE id=?");
 $stmt->execute([$inventario_id]);
 $inventario = $stmt->fetch(PDO::FETCH_ASSOC);
@@ -12,6 +13,7 @@ $inventario = $stmt->fetch(PDO::FETCH_ASSOC);
 if (!$inventario) {
     die("<div class='alert alert-danger'>Inventário não encontrado!</div>");
 }
+
 
 $stmtItens = $pdo->prepare("
     SELECT ii.id_item, i.nome,
@@ -39,9 +41,7 @@ $itens = $stmtItens->fetchAll(PDO::FETCH_ASSOC);
 
 <div class="container mt-4">
     <h2>Visualizar Inventário #<?=$inventario_id?></h2>
-    <h4>Status: <span class="badge <?= $inventario['status'] == 'APROVADO' ? 'bg-success' : ($inventario['status'] == 'REPROVADO' ? 'bg-danger' : 'bg-secondary') ?>">
-        <?=$inventario['status']?>
-    </span></h4>
+    <h4>Status: <span class="badge bg-secondary"><?=$inventario['status']?></span></h4>
 
     <table class="table table-bordered table-striped mt-3">
         <thead>

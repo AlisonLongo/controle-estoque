@@ -4,6 +4,10 @@ include "conexao.php";
 
 $fornecedores = $pdo->query("SELECT id, nome FROM fornecedores WHERE status='ATIVO' ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
 $itens = $pdo->query("SELECT id, nome, valor_unitario FROM itens WHERE status='ATIVO' ORDER BY nome")->fetchAll(PDO::FETCH_ASSOC);
+$inventarioAberto = $pdo->query("SELECT COUNT(*) FROM inventarios WHERE status NOT IN ('APROVADO','REPROVADO')")->fetchColumn();
+$bloqueado = $inventarioAberto > 0;
+$msg_bloqueio = $bloqueado ? "⚠️ Existe um inventário em andamento. Não é possível criar, editar ou aprovar ordens de compra." : "";
+
 
 
 function getItensOrdem($pdo, $ordem_id){
@@ -25,53 +29,67 @@ $filtros_ativos = [
 
 if(isset($_GET['acao'], $_GET['id'])){
     $ordem_id = $_GET['id'];
+
     if($_GET['acao']=='aprovar'){
-        $pdo->prepare("UPDATE ordens_compra SET status='aprovado' WHERE id=?")->execute([$ordem_id]);
-        $itens_ordem = getItensOrdem($pdo,$ordem_id);
-        foreach($itens_ordem as $item){
-            $pdo->prepare("INSERT INTO movimentacoes (id_item, tipo_movimentacao, quantidade, valor_total, observacao) 
-                VALUES (?, 'entrada', ?, ?, ?)")->execute([
-                    $item['id_item'],$item['quantidade'],$item['quantidade']*$item['valor_unitario'],"OC"
-                ]);
+        if($bloqueado){
+            $msg = $msg_bloqueio;
+        } else {
+
+            $pdo->prepare("UPDATE ordens_compra SET status='aprovado' WHERE id=?")->execute([$ordem_id]);
+            $itens_ordem = getItensOrdem($pdo,$ordem_id);
+            foreach($itens_ordem as $item){
+                $pdo->prepare("INSERT INTO movimentacoes (id_item, tipo_movimentacao, quantidade, valor_total, observacao) 
+                    VALUES (?, 'entrada', ?, ?, ?)")->execute([
+                        $item['id_item'],$item['quantidade'],$item['quantidade']*$item['valor_unitario'],"OC"
+                    ]);
+            }
         }
     } elseif($_GET['acao']=='reprovar'){
+
         $pdo->prepare("UPDATE ordens_compra SET status='reprovado' WHERE id=?")->execute([$ordem_id]);
     }
+
     $query_filtros = http_build_query($filtros_ativos);
     header("Location: ?$query_filtros&filtrar=1");
     exit;
 }
+
 
 if($_SERVER['REQUEST_METHOD']=='POST'){
-    $ordem_id = $_POST['ordem_id'] ?? null;
-    $fornecedor_id = $_POST['fornecedor'];
-    $item_id = $_POST['item'];
-    $quantidade = $_POST['quantidade'];
-    $valor_unitario = $_POST['valor_unitario'];
+    if($bloqueado){
+        $msg = $msg_bloqueio;
+    } else {
+        $ordem_id = $_POST['ordem_id'] ?? null;
+        $fornecedor_id = $_POST['fornecedor'];
+        $item_id = $_POST['item'];
+        $quantidade = $_POST['quantidade'];
+        $valor_unitario = $_POST['valor_unitario'];
 
-    if(isset($_POST['criar_ordem'])){
-        $stmt = $pdo->prepare("INSERT INTO ordens_compra (id_fornecedor) VALUES (?) RETURNING id");
-        $stmt->execute([$fornecedor_id]);
-        $ordem_id = $stmt->fetchColumn();
+        if(isset($_POST['criar_ordem'])){
+            $stmt = $pdo->prepare("INSERT INTO ordens_compra (id_fornecedor) VALUES (?) RETURNING id");
+            $stmt->execute([$fornecedor_id]);
+            $ordem_id = $stmt->fetchColumn();
 
-        if($quantidade>0){
-            $pdo->prepare("INSERT INTO ordem_itens (id_ordem, id_item, quantidade, valor_unitario) VALUES (?,?,?,?)")
-                ->execute([$ordem_id,$item_id,$quantidade,$valor_unitario]);
+            if($quantidade>0){
+                $pdo->prepare("INSERT INTO ordem_itens (id_ordem, id_item, quantidade, valor_unitario) VALUES (?,?,?,?)")
+                    ->execute([$ordem_id,$item_id,$quantidade,$valor_unitario]);
+            }
+            $msg = "Ordem criada com sucesso!";
         }
-        $msg = "Ordem criada com sucesso!";
-    }
 
-    if(isset($_POST['salvar_ordem'])){
-        $pdo->prepare("UPDATE ordens_compra SET id_fornecedor=? WHERE id=?")->execute([$fornecedor_id,$ordem_id]);
-        $pdo->prepare("UPDATE ordem_itens SET id_item=?, quantidade=?, valor_unitario=? WHERE id_ordem=?")
-            ->execute([$item_id, $quantidade, $valor_unitario, $ordem_id]);
-        $msg = "Ordem atualizada com sucesso!";
+        if(isset($_POST['salvar_ordem'])){
+            $pdo->prepare("UPDATE ordens_compra SET id_fornecedor=? WHERE id=?")->execute([$fornecedor_id,$ordem_id]);
+            $pdo->prepare("UPDATE ordem_itens SET id_item=?, quantidade=?, valor_unitario=? WHERE id_ordem=?")
+                ->execute([$item_id, $quantidade, $valor_unitario, $ordem_id]);
+            $msg = "Ordem atualizada com sucesso!";
+        }
     }
 
     $query_filtros = http_build_query($filtros_ativos);
     header("Location: ?$query_filtros&filtrar=1");
     exit;
 }
+
 
 $ordens = [];
 $where = [];
@@ -140,6 +158,9 @@ if(isset($_GET['filtrar'])){
     <?php foreach($filtros_ativos as $key=>$val): ?>
         <input type="hidden" name="<?= $key ?>" value="<?= htmlspecialchars($val) ?>">
     <?php endforeach; ?>
+    <?php if($bloqueado): ?>
+    <div class="alert alert-warning"><?=$msg_bloqueio?></div>
+<?php endif; ?>
 
     <div class="mb-3">
         <label>Fornecedor:</label>
